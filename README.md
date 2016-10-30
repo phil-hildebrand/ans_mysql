@@ -1,6 +1,6 @@
 # Ansible Based MySQL Deployment Tool
 
-![](https://api.travis-ci.org/phil-hildebrand/ans_mysql.svg?token=NpRzNTY9g3JHGi9MM2yx)
+![](https://travis-ci.org/phil-hildebrand/ans_mysql.svg?branch=master)
 
 # Overview
 
