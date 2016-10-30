@@ -318,6 +318,12 @@
      no_log: True
      register: mysql_databases
 
+   - name: Create user for testing
+     become_method: sudo
+     shell: mysql -u root -p{{ root_pass }} -h localhost -e "CREATE USER 'testing'@'localhost' IDENTIFIED BY 'testing';"
+     no_log: True
+     when: ((force|bool) or (percona_server_installed is not defined))
+
    - name: Grant permissions for testing
      become_method: sudo
      shell: mysql -u root -p{{ root_pass }} -h localhost -e "GRANT ALL ON *.* TO 'testing'@'localhost';"
