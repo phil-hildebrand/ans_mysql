@@ -1,0 +1,319 @@
+---
+- hosts: dev
+
+  vars_files:
+   - group_vars/default_vars.yml
+
+  tasks:
+   - name: Add Main Percona repository
+     become_method: sudo
+     apt_repository:
+      repo='deb http://repo.percona.com/apt {{ansible_distribution_release}} main' state=present
+
+   - name: Add Src Percona repository
+     become_method: sudo
+     apt_repository:
+      repo='deb-src http://repo.percona.com/apt  {{ansible_distribution_release}} main' state=present
+
+   - name: Update Percona Key
+     become_method: sudo
+     apt_key: keyserver=keyserver.ubuntu.com id=8507EFA5 state=present
+
+   - name: Update apt cache
+     become_method: sudo
+     apt: update_cache=yes
+
+   - name: Update sysctl settings
+     become_method: sudo
+     sysctl:
+      name=vm.swappiness value=0 state=present
+      name=fs.nr_open value=1000000 state=present
+      name=fs.file-max value=1000000 state=present
+
+   - name: Remove apparmor
+     become_method: sudo
+     apt: name=apparmor state=absent
+
+   - name: Forcibly kill running mysql installs if force
+     become_method: sudo
+     ignore_errors: True
+     command: killall mysqld
+     when: force
+
+   - name: Check for data directory
+     stat: path={{data_dir}}/mysql
+     register: dd
+
+   - name: Verify backup directory exists
+     become_method: sudo
+     file: path={{backup_dir}} mode=0777 state=directory
+
+   - name: Backup existing mysql data if force install
+     become_method: sudo
+     shell: DT=`date +%Y%m%d`; tar -cf - {{data_dir}}/mysql | sudo gzip -c > {{backup_dir}}/install_data_dir_backup_${DT}.tar.gz
+     ignore_errors: True
+     when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
+
+   - name: Remove existing mysql files if force 
+     become_method: sudo
+     command: rm -rf {{ data_dir }}/mysql/*
+     ignore_errors: True
+     when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
+
+   - name: Remove existing /var/lib/mysql files if force 
+     become_method: sudo
+     command: rm -rf /var/lib/mysql 
+     ignore_errors: True
+     when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
+
+   - debug: var=dd.stat.isdir verbosity=2
+
+   - name: Check if percona server packages are installed
+     become_method: sudo
+     shell: dpkg -l 'percona-server-server-*' | grep -v '^.n\|^|\|+\|^Des' | tr -s ' ' | cut -d ' ' -f2
+     ignore_errors: True
+     register: percona_server_installed
+
+   - name: Fix partially configured packages
+     become_method: sudo
+     shell: dpkg --configure -a
+     ignore_errors: True
+     when: force
+
+   - name: Remove existing percona server installs 
+     become_method: sudo
+     apt: name={{item}} state=absent purge=yes force=yes autoremove=yes dpkg_options=force-configure-any
+     with_items: "{{ percona_server_installed.stdout_lines|default([]) }}"
+     async: 240
+     poll: 5
+     when: force
+
+   - name: Check if mysql server packages are installed
+     become_method: sudo
+     shell: dpkg -l 'mysql-server-*' | grep -v '^.n\|^|\|+\|^Des' | tr -s ' ' | cut -d ' ' -f2
+     ignore_errors: True
+     register: mysql_server_installed
+
+   - debug: var=mysql_server_installed verbosity=2
+
+   - name: Remove existing mysql server installs 
+     become_method: sudo
+     apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
+     with_items: "{{ mysql_server_installed.stdout_lines|default([]) }}"
+     when: force
+
+   - name: Check if other percona packages are installed
+     become_method: sudo
+     shell: dpkg -l 'percona-server-*' | grep -v '^.n\|^|\|+\|^Des' | tr -s ' ' | cut -d ' ' -f2
+     ignore_errors: True
+     register: percona_installed
+
+   - debug: var=percona_server_installed verbosity=2
+
+   - name: Remove other percona installs 
+     become_method: sudo
+     apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
+     with_items: "{{ percona_installed.stdout_lines|default([]) }}"
+     when: force
+
+   - name: Check if other mysql packages are installed
+     become_method: sudo
+     shell: dpkg -l 'mysql-*' | grep -v '^.n\|^|\|+\|^Des' | tr -s ' ' | cut -d ' ' -f2
+     ignore_errors: True
+     register: mysql_installed
+
+   - name: Remove other mysql installs  
+     become_method: sudo
+     apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
+     with_items: "{{ mysql_installed.stdout_lines|default([]) }}"
+     when: force
+
+   - name: Remove any previosly installed MySQL config files if force
+     become_method: sudo
+     file: path="{{ item.path }}" state="{{ item.state }}"
+     with_items:
+      - { path: '/etc/mysql/my.cnf', state: 'absent' }
+      - { path: '/root/.my.cnf', state: 'absent' }
+      - { path: '/etc/init.d/mysql', state: 'absent' }
+     when: ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Install Percona MySQL 
+     become_method: sudo
+     apt:
+      name=percona-server-common-{{version}} state=latest force=yes
+      name=percona-server-client-{{version}} state=latest force=yes
+      name=percona-server-server-{{version}} state=latest force=yes
+     when: percona_server_installed.stdout_lines == [] and mysql_server_installed.stdout_lines == [] or (force|bool)
+
+   - debug: var=percona_server_installed.stdout_lines verbosity=2
+   - debug: var=mysql_server_installed.stdout_lines verbosity=2
+   - debug: var=force verbosity=2
+
+   - name: Get list hosts set for root user
+     become_method: sudo
+     shell: mysql -u root -sN -e "select host from mysql.user where user = 'root';"
+     register: mysql_root_hosts
+     when: percona_server_installed.stdout_lines == [] and mysql_server_installed.stdout_lines == [] or (force|bool)
+
+   - name: Set root password for localhost - 5.5
+     become_method: sudo
+     shell: mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('{{ root_pass }}');"
+     no_log: True
+     when: version == '5.5' and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Set root password for localhost - 5.6
+     become_method: sudo
+     shell: mysql -u root -h localhost -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('{{ root_pass }}');"
+     no_log: True
+     when: version == '5.6' and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Set root password for all hosts - pre 5.7
+     become_method: sudo
+     shell: mysql -u root -p{{ root_pass }} -h localhost -e "SET PASSWORD FOR 'root'@'{{ item }}' = PASSWORD('{{ root_pass }}');"
+     with_items: "{{ mysql_root_hosts.stdout_lines|default([]) }}"
+     no_log: True
+     when: version != '5.7' and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Set root password for localhost - 5.7
+     become_method: sudo
+     shell: mysql -u root -h localhost -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ root_pass }}';"
+     no_log: True
+     when: version == '5.7' and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Set root password for all hosts - 5.7
+     become_method: sudo
+     shell: mysql -u root -p{{ root_pass }} -h localhost -e "ALTER USER 'root'@'{{ item }}' IDENTIFIED BY '{{ root_pass }}';"
+     with_items: "{{ mysql_root_hosts.stdout_lines|default([]) }}"
+     no_log: True
+     when: version == '5.7' and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Create MySQL data directories
+     become_method: sudo
+     file: path="{{ item.path }}" owner="{{ item.owner }}" group="{{ item.group }}" mode={{ item.mode }} state="{{ item.state }}"
+     with_items:
+      - { path: '{{data_dir}}/mysql', owner: 'mysql', group: 'mysql', mode: '0775', state: 'directory' }
+      - { path: '{{data_dir}}/mysql-logs', owner: 'mysql', group: 'mysql', mode: '0775', state: 'directory' }
+      - { path: '{{data_dir}}/mysql-files', owner: 'mysql', group: 'mysql', mode: '0775', state: 'directory' }
+      - { path: '{{data_dir}}/tmp', owner: 'mysql', group: 'mysql', mode: '0775', state: 'directory' }
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Stop MySQL for reconfiguration
+     become_method: sudo
+     service: name=mysql pattern=mysqld state=stopped
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Rsync default MySQL directory to data_dir
+     become_method: sudo
+     synchronize:
+      src: /var/lib/mysql
+      dest: "{{data_dir}}"
+     delegate_to: "{{ inventory_hostname }}"
+     no_log: True
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Set permissions for mysql directory
+     become_method: sudo
+     file: path={{data_dir}}/mysql mode=0755 state=directory
+
+   - name: Upload MySQL configuration file
+     become_method: sudo
+     template: src=templates/{{version}}.my.cnf.j2 dest=/etc/mysql/my.cnf owner=mysql group=mysql mode=644 backup=yes
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Upload root configuration file
+     become_method: sudo
+     template: src=templates/root_my.cnf.j2 dest=/root/.my.cnf owner=root group=root mode=600 backup=yes
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Upload MySQL logrotate file
+     become_method: sudo
+     template: src=templates/percona-{{version}}-logrotate.j2 dest=/etc/logrotate.d/percona-server-server-{{version}} owner=root group=root mode=644 backup=no
+     when: (force|bool) or (percona_server_installed is not defined)
+ 
+   - name: Check for data directory
+     stat: path={{data_dir}}/mysql
+
+   - name: Set buffer size to 70% of mem if total mem > 2GB
+     set_fact:
+      ram_size: "{{ (ansible_memtotal_mb  * 0.7) | int }}"
+      mysql_sid: "{{ ansible_eth0.ipv4.address | replace('.','') }}"
+     when: "{{ ansible_memtotal_mb > 2048 }}"
+
+   - name: Set buffer size to 100M if total mem <= 2GB
+     set_fact:
+      ram_size: "100"
+      mysql_sid: "{{ ansible_eth0.ipv4.address | replace('.','') }}"
+     when: "{{ ansible_memtotal_mb <= 2048 }}"
+
+   - name: Update MySQL config settings with buffer pool size
+     become_method: sudo
+     lineinfile:
+      dest: /etc/mysql/my.cnf
+      regexp: "{{ item.regexp }}"
+      line: "{{ item.line }}"
+     with_items:
+      - { regexp: '^datadir.*', line: 'datadir = {{data_dir}}/mysql' }
+      - { regexp: '^socket.*', line: 'socket = {{data_dir}}/mysql/mysql.sock' }
+      - { regexp: '^pid-file.*', line: 'pid-file = {{data_dir}}/mysql/mysql.pid' }
+      - { regexp: '^tmpdir.*', line: 'tmpdir = {{data_dir}}/tmp' }
+      - { regexp: '^log-bin.*', line: 'log-bin = {{data_dir}}/mysql-logs/mysql-bin' }
+      - { regexp: '^log-error.*', line: 'log-error = {{data_dir}}/mysql-logs/error.log' }
+      - { regexp: '^slow-query-log-file.*', line: 'slow-query-log-file = {{data_dir}}/mysql-logs/slow.log' }
+      - { regexp: '^relay-log.*', line: 'relay-log = {{data_dir}}/mysql-logs/relay-bin' }
+      - { regexp: '^server-id.*', line: 'server-id = {{mysql_sid}}' }
+      - { regexp: '^innodb-buffer-pool-size.*', line: 'innodb-buffer-pool-size = {{ram_size}}M' }
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Update MySQL init script data directory
+     become_method: sudo
+     replace:
+      dest: /etc/init.d/mysql
+      regexp: "{{ item.regexp }}"
+      replace: "{{ item.replace}}"
+     with_items:
+      - { regexp: 'MYSQLDATA=.*', replace: 'MYSQLDATA=$(get_mysql_option mysqld datadir "{{data_dir}}/mysql")' }
+      - { regexp: 'MYADMIN=.*', replace: 'MYADMIN="${PERCONA_PREFIX}/bin/mysqladmin --defaults-file=./root/.my.cnf"' }
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Remove any innodb log buffer files for resizing
+     become_method: sudo
+     file: path="{{ item.path }}" state="{{ item.state }}"
+     with_items:
+      - { path: '{{data_dir}}/mysql/ib_logfile0', state: 'absent' }
+      - { path: '{{data_dir}}/mysql/ib_logfile1', state: 'absent' }
+      - { path: '{{data_dir}}/mysql-logs/error.log', state: 'absent' }
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Update MySQL init script log directory
+     become_method: sudo
+     replace: dest=/etc/init.d/mysql regexp='MYSQLLOG=.*' replace='MYSQLLOG={{data_dir}}/mysql-logs'
+     when: version == '5.7' and (force|bool) or (percona_server_installed is not defined)
+
+   - name: Start Mysql
+     become_method: sudo
+     service: name=mysql pattern=mysqld state=started
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Check MySQL Errorlog for errors
+     become_method: sudo
+     shell: grep -i error {{ data_dir }}/mysql-logs/error.log | wc -l
+     register: errors_found
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - debug: var=errors_found verbosity=2
+
+   - name: Verify MySQL actually completed startup
+     shell: tail {{data_dir}}/mysql-logs/error.log | grep 'ready for connections' | wc -l
+     register: check_startup
+     until: (check_startup.stdout|int) > 0
+     retries: 5
+     delay: 10
+     when: (force|bool) or (percona_server_installed is not defined)
+
+   - debug: var=check_startup verbosity=2
+
+   - name: Verify connections and databases
+     become_method: sudo
+     shell: mysql -u root -p{{root_pass}} -sN -e "show databases;"
+     no_log: True
+     register: mysql_databases

@@ -1,0 +1,9 @@
+---
+# Default variables for new MySQL Host
+force: false
+data_dir: /data
+backup_dir: /backup
+version: 5.7
+db_port: 3306
+db_admin_port: 3307
+root_pass: test
