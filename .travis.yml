@@ -10,7 +10,6 @@ install:
 
 # command to build and run tests
 script:
-  - cat /home/travis/.ssh/id_rsa.pub >> /home/travis/.ssh/authorized_keys
   - ansible-playbook -b -i tests/inventory tests/test.yml --syntax-check
   - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=true version=5.5"
   - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=false version=5.5"
