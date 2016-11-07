@@ -5,6 +5,7 @@
    - group_vars/default_vars.yml
 
   tasks:
+
    - name: Add Main Percona repository
      become_method: sudo
      apt_repository:
@@ -27,8 +28,8 @@
      become_method: sudo
      sysctl:
       name=vm.swappiness value=0 state=present
-      name=fs.nr_open value=1000000 state=present
-      name=fs.file-max value=1000000 state=present
+      name=fs.nr_open value=5000000 state=present
+      name=fs.file-max value=5000000 state=present
 
    - name: Remove apparmor
      become_method: sudo
@@ -54,16 +55,14 @@
      ignore_errors: True
      when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
 
-   - name: Remove existing mysql files if force 
+   - name: Remove existing data_dir/mysql files if force 
      become_method: sudo
-     command: rm -rf {{ data_dir }}/mysql/*
-     ignore_errors: True
+     file: path={{ data_dir }}/mysql state=absent
      when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
 
    - name: Remove existing /var/lib/mysql files if force 
      become_method: sudo
-     command: rm -rf /var/lib/mysql 
-     ignore_errors: True
+     file: path=/var/lib/mysql state=absent
      when: (force|bool) and dd.stat.isdir is defined and dd.stat.isdir
 
    - debug: var=dd.stat.isdir verbosity=2
@@ -78,7 +77,7 @@
      become_method: sudo
      shell: dpkg --configure -a
      ignore_errors: True
-     when: force
+     when: (force|bool)
 
    - name: Remove existing percona server installs 
      become_method: sudo
@@ -86,7 +85,7 @@
      with_items: "{{ percona_server_installed.stdout_lines|default([]) }}"
      async: 240
      poll: 5
-     when: force
+     when: (force|bool)
 
    - name: Check if mysql server packages are installed
      become_method: sudo
@@ -100,7 +99,7 @@
      become_method: sudo
      apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
      with_items: "{{ mysql_server_installed.stdout_lines|default([]) }}"
-     when: force
+     when: (force|bool)
 
    - name: Check if other percona packages are installed
      become_method: sudo
@@ -114,7 +113,7 @@
      become_method: sudo
      apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
      with_items: "{{ percona_installed.stdout_lines|default([]) }}"
-     when: force
+     when: (force|bool)
 
    - name: Check if other mysql packages are installed
      become_method: sudo
@@ -126,7 +125,7 @@
      become_method: sudo
      apt: name={{item}} state=absent purge=yes force=yes autoremove=yes
      with_items: "{{ mysql_installed.stdout_lines|default([]) }}"
-     when: force
+     when: (force|bool)
 
    - name: Remove any previosly installed MySQL config files if force
      become_method: sudo
@@ -148,6 +147,11 @@
    - debug: var=percona_server_installed.stdout_lines verbosity=2
    - debug: var=mysql_server_installed.stdout_lines verbosity=2
    - debug: var=force verbosity=2
+
+   - name: Do any upgrade's if force
+     become_method: sudo
+     shell: mysql_upgrade -f -u root -h localhost
+     when: (force|bool) or (percona_server_installed is not defined)
 
    - name: Get list hosts set for root user
      become_method: sudo
@@ -217,7 +221,7 @@
 
    - name: Upload MySQL configuration file
      become_method: sudo
-     template: src=templates/{{version}}.my.cnf.j2 dest=/etc/mysql/my.cnf owner=mysql group=mysql mode=644 backup=yes
+     template: src=templates/{{version}}_my.cnf.j2 dest=/etc/mysql/my.cnf owner=mysql group=mysql mode=644 backup=yes
      when: (force|bool) or (percona_server_installed is not defined)
 
    - name: Upload root configuration file
@@ -227,7 +231,7 @@
 
    - name: Upload MySQL logrotate file
      become_method: sudo
-     template: src=templates/percona-{{version}}-logrotate.j2 dest=/etc/logrotate.d/percona-server-server-{{version}} owner=root group=root mode=644 backup=no
+     template: src=templates/percona-{{version}}-logrotate.j2 dest=/etc/logrotate.d/percona{{version}} owner=root group=root mode=644 backup=no
      when: (force|bool) or (percona_server_installed is not defined)
  
    - name: Check for data directory
@@ -252,14 +256,6 @@
       regexp: "{{ item.regexp }}"
       line: "{{ item.line }}"
      with_items:
-      - { regexp: '^datadir.*', line: 'datadir = {{data_dir}}/mysql' }
-      - { regexp: '^socket.*', line: 'socket = {{data_dir}}/mysql/mysql.sock' }
-      - { regexp: '^pid-file.*', line: 'pid-file = {{data_dir}}/mysql/mysql.pid' }
-      - { regexp: '^tmpdir.*', line: 'tmpdir = {{data_dir}}/tmp' }
-      - { regexp: '^log-bin.*', line: 'log-bin = {{data_dir}}/mysql-logs/mysql-bin' }
-      - { regexp: '^log-error.*', line: 'log-error = {{data_dir}}/mysql-logs/error.log' }
-      - { regexp: '^slow-query-log-file.*', line: 'slow-query-log-file = {{data_dir}}/mysql-logs/slow.log' }
-      - { regexp: '^relay-log.*', line: 'relay-log = {{data_dir}}/mysql-logs/relay-bin' }
       - { regexp: '^server-id.*', line: 'server-id = {{mysql_sid}}' }
       - { regexp: '^innodb-buffer-pool-size.*', line: 'innodb-buffer-pool-size = {{ram_size}}M' }
      when: (force|bool) or (percona_server_installed is not defined)
@@ -314,6 +310,25 @@
 
    - name: Verify connections and databases
      become_method: sudo
-     shell: mysql -u root -p{{root_pass}} -sN -e "show databases;"
+     shell: mysql -u root -p{{ root_pass }} -sN -e "show databases;"
      no_log: True
      register: mysql_databases
+     when: ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Create DB Users for travis if travis run
+     become_method: sudo
+     shell: mysql -u root -p{{ root_pass }} -h localhost -e "CREATE USER '{{ item.user }}'@'{{ item.host }}' identified by '{{ item.pass }}';"
+     with_items:
+     - { user: 'testing', host: '%', pass: 'testing' }
+     - { user: 'testing', host: 'localhost', pass: 'testing' }
+     no_log: True
+     when: (env == 'travis') and ((force|bool) or (percona_server_installed is not defined))
+
+   - name: Grant permissions for travis users if travis run
+     become_method: sudo
+     shell: mysql -u root -p{{ root_pass }} -h localhost -e "GRANT {{ item.grants }} ON *.* TO '{{ item.user }}'@'{{ item.host }}';"
+     with_items:
+     - { grants: 'all', user: 'testing', host: '%' }
+     - { grants: 'all', user: 'testing', host: 'localhost' }
+     no_log: True
+     when: (env == 'travis') and ((force|bool) or (percona_server_installed is not defined))
