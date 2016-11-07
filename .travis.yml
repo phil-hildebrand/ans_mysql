@@ -6,23 +6,17 @@ python:
 install:
   - pip install -r requirements.txt
   - pip install ansible
-  - python setup.py install
+  - pip install pytest
+
+# Run in parallel for each mysql version being tested
+env:
+  global:
+    - CI_NODE_TOTAL=3
+  matrix:
+  - MYSQL_VERSION=5.5 CI_NODE_INDEX=0
+  - MYSQL_VERSION=5.6 CI_NODE_INDEX=1
+  - MYSQL_VERSION=5.7 CI_NODE_INDEX=2
 
 # command to build and run tests
 script:
-  - ansible-playbook -b -i tests/inventory tests/test.yml --syntax-check
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=true version=5.5"
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=false version=5.5"
-  - >
-    mysql --version | grep 5.5 && (echo 'mysql version test: pass' && exit 0) || (echo 'mysql version test: fail' && exit 1)
-  - python setup.py test
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=true version=5.6"
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=false version=5.6"
-  - >
-    mysql --version | grep 5.6 && (echo 'mysql version test: pass' && exit 0) || (echo 'mysql version test: fail' && exit 1)
-  - python setup.py test
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=true version=5.7"
-  - ansible-playbook -b -i tests/inventory tests/test.yml --connection=local --extra-vars "force=false version=5.7"
-  - >
-    mysql --version | grep 5.7 && (echo 'mysql version test: pass' && exit 0) || (echo 'mysql version test: fail' && exit 1)
-  - python setup.py test
+  - pytest --capture=no tests

@@ -31,7 +31,7 @@ $ sudo pip install ansible
   $ vagrant box add ubuntu/trusty64
   $ vagrant up
   $ ssh-add .vagrant/machines/ans_mysql/virtualbox/private_key 
-  $ ansible -i ansible.hosts dev -m ping
+  $ ansible -i inventory dev -m ping
   
 ```
 
@@ -40,12 +40,12 @@ $ sudo pip install ansible
 
 ## Options
 
-- force: [true | false] (`default=false`) - Remove existing mysql instances
+- force: \[ true | false \] (`default=false`) - Remove existing mysql instances
 - data_dir: ( `default=/data`) - Where to put mysql data & log directories
 - backup_dir: ( `/backup` ) - Where to put mysql backups of existing data if `force=true`
-- version: [ 5.5 | 5.6 | 5.7 ] (`default=5.7`) - Major version of MySQL to install
+- version: \[ 5.5 | 5.6 | 5.7 \] (`default=5.7`) - Major version of MySQL to install
 - db\_port: (`default=3306`) - MySQL port to listen on
-- db\_admin\_port: (`default=3307`) - MySQL port for administration emergencies
+- db\_extra\_port: (`default=3307`) - MySQL port for administration emergencies
 - root\_pass: (`default=test`) - Creds for root user
 
 ## Deployment
