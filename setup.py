@@ -8,9 +8,9 @@ import os, sys
 with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
-setup(name = 'mysql_crud',
-      version = '1.0.0',
-      description = 'MySQL CRUD tests',
+setup(name = 'test_playbook',
+      version = '1.1.0',
+      description = 'Ansible Play & MySQL CRUD tests',
       url = 'http://github.com/phil-hildebrand/ans_mysql',
       author = 'Phil Hildebrand',
       author_email = 'phil.hildebrand@gmail.com',
