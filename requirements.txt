@@ -1,2 +1,5 @@
+ansible
 pymysql
+pytest
+pytest-ordering
 pyyaml
