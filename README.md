@@ -29,8 +29,8 @@ $ sudo pip install ansible
 ```
   $ cd <repo_path>/ans_mysql
   $ vagrant box add ubuntu/trusty64
-  $ vagrant up mysql\[55 \| 56 \| 57 \]
-  $ vagrant ssh mysql\[55 \| 56 \| 57 \]
+  $ vagrant up mysql[ 55 | 56 | 57 ]
+  $ vagrant ssh mysql[ 55 | 56 | 57 ]
 ```
 - vagrant up by default will be MySQL 5.7
 - MySQL 5.7 vagrant ip will be 192.168.1.57
@@ -39,6 +39,7 @@ $ sudo pip install ansible
 
 - to run tests:
 ```
+  $ vagrant ssh mysql[ 55 | 56 | 57 ]
   $ cd /vagrant
   $ pytest -m "not test_play" tests
 ```
