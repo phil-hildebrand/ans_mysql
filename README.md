@@ -29,14 +29,19 @@ $ sudo pip install ansible
 ```
   $ cd <repo_path>/ans_mysql
   $ vagrant box add ubuntu/trusty64
-  $ vagrant up
-  $ ssh-add .vagrant/machines/ans_mysql/virtualbox/private_key 
-  $ ansible -i inventory dev -m ping
-  
+  $ vagrant up mysql\[55 \| 56 \| 57 \]
+  $ vagrant ssh mysql\[55 \| 56 \| 57 \]
 ```
+- vagrant up by default will be MySQL 5.7
+- MySQL 5.7 vagrant ip will be 192.168.1.57
+- MySQL 5.6 vagrant ip will be 192.168.1.56
+- MySQL 5.5 vagrant ip will be 192.168.1.55
 
-1. Run `$ ansible-playbook -v -b playbooks/main.yml  -l 192.168.2.11`
-2. MySQL should be available either directly on localhost with `mysql` or at 192.168.2.11 with `mysql -h 192.168.2.11` 
+- to run tests:
+```
+  $ cd /vagrant
+  $ pytest -m "not test_play" tests
+```
 
 ## Options
 

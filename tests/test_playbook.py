@@ -4,6 +4,7 @@
 import json
 import os
 import pymysql as m
+import pytest
 import random
 import shlex
 import string
@@ -53,6 +54,8 @@ class TestPlaybooks():
 
         return (True, output)
 
+    @pytest.mark.order1
+    @pytest.mark.test_play
     def test_playbook_mysql(self):
         '''We should be able to install MySQL (with and without --force)'''
         run_string = ans_run + '"env=travis force=true ' + ans_env + '"'
@@ -74,11 +77,13 @@ class TestPlaybooks():
             return(False)
         return(self.conn)
 
+    @pytest.mark.order2
     def test_connection(self):
         '''We should be able to create a connection in prep for mysql tests'''
 
         assert (self.connection() is not False)
 
+    @pytest.mark.order3
     def test_version(self):
         '''We should be able to get the mysql version'''
         db = self.connection()
@@ -97,6 +102,7 @@ class TestPlaybooks():
             return(False)
         return(True)
 
+    @pytest.mark.order4
     def test_database_creates(self):
         '''We should be able to create databases'''
         db = self.connection()
@@ -112,6 +118,7 @@ class TestPlaybooks():
                 print ('Create Database Failed: (%s)' % e)
         assert (created == 3)
 
+    @pytest.mark.order5
     def test_create_tables(self):
         '''We should be able to create tables'''
         db = self.connection()
@@ -129,6 +136,7 @@ class TestPlaybooks():
                     print ('Create Table Failed: (%s)' % e)
         assert (created == 9)
 
+    @pytest.mark.order6
     def test_inserts(self):
         '''We should be able to insert data into tables'''
         inserts = 10
@@ -149,6 +157,7 @@ class TestPlaybooks():
                         print ('Inserts Failed: (%s)' % e)
         assert (inserted == 90)
 
+    @pytest.mark.order7
     def test_selects(self):
         '''We should be able to select data from tables'''
         selects = 10
@@ -168,6 +177,7 @@ class TestPlaybooks():
                         print ('Selects Failed: (%s)' % e)
         assert (selected == 90)
 
+    @pytest.mark.order8
     def test_updates(self):
         '''We should be able to select data from tables'''
         updates = 10
@@ -188,6 +198,7 @@ class TestPlaybooks():
                         print ('Updates Failed: (%s)' % e)
         assert (updated == 90)
 
+    @pytest.mark.order9
     def test_deletes(self):
         '''We should be able to delete data from tables'''
         deletes = 10
