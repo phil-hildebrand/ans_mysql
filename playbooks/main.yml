@@ -212,7 +212,7 @@
       src: /var/lib/mysql
       dest: "{{data_dir}}"
      delegate_to: "{{ inventory_hostname }}"
-     no_log: True
+#     no_log: True
      when: (force|bool) or (percona_server_installed is not defined)
 
    - name: Set permissions for mysql directory
@@ -273,12 +273,22 @@
 
    - name: Remove any innodb log buffer files for resizing
      become_method: sudo
-     file: path="{{ item.path }}" state="{{ item.state }}"
+     file:
+       path: "{{ item.path }}"
+       state: "{{ item.state }}"
      with_items:
       - { path: '{{data_dir}}/mysql/ib_logfile0', state: 'absent' }
       - { path: '{{data_dir}}/mysql/ib_logfile1', state: 'absent' }
-      - { path: '{{data_dir}}/mysql-logs/error.log', state: 'absent' }
      when: (force|bool) or (percona_server_installed is not defined)
+
+   - name: Make sure error log exists
+     become_method: sudo
+     file:
+       path: "{{data_dir}}/mysql-logs/error.log"
+       state: touch
+       owner: mysql
+       group: mysql
+       mode: 0774
 
    - name: Update MySQL init script log directory
      become_method: sudo
@@ -322,7 +332,7 @@
      - { user: 'testing', host: '%', pass: 'testing' }
      - { user: 'testing', host: 'localhost', pass: 'testing' }
      no_log: True
-     when: (env == 'travis') and ((force|bool) or (percona_server_installed is not defined))
+     when: (env in ['travis', 'vagrant']) and ((force|bool) or (percona_server_installed is not defined))
 
    - name: Grant permissions for travis users if travis run
      become_method: sudo
@@ -331,4 +341,4 @@
      - { grants: 'all', user: 'testing', host: '%' }
      - { grants: 'all', user: 'testing', host: 'localhost' }
      no_log: True
-     when: (env == 'travis') and ((force|bool) or (percona_server_installed is not defined))
+     when: (env in ['travis', 'vagrant']) and ((force|bool) or (percona_server_installed is not defined))

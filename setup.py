@@ -9,7 +9,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
 setup(name = 'test_playbook',
-      version = '1.1.0',
+      version = '1.2.0',
       description = 'Ansible Play & MySQL CRUD tests',
       url = 'http://github.com/phil-hildebrand/ans_mysql',
       author = 'Phil Hildebrand',
